@@ -1,7 +1,7 @@
 # MideaKit
 
-[![build](https://github.com/hafaio/MideaKit/actions/workflows/build.yml/badge.svg)](https://github.com/hafaio/MideaKit/actions/workflows/build.yml)
-[![docs](https://img.shields.io/badge/docs-DocC-informational.svg)](https://hafaio.github.io/MideaKit/)
+[![build](https://github.com/hafacc/MideaKit/actions/workflows/build.yml/badge.svg)](https://github.com/hafacc/MideaKit/actions/workflows/build.yml)
+[![docs](https://img.shields.io/badge/docs-DocC-informational.svg)](https://hafa.cc/MideaKit/)
 
 Native Swift library for local control of Midea (and rebranded) WiFi air
 conditioners over the LAN — no cloud after a one-time key fetch.
@@ -24,7 +24,7 @@ made, so overlapping calls from different tasks are safe.
 ## Install (Swift Package Manager)
 
 ```swift
-.package(url: "https://github.com/hafaio/MideaKit", from: "0.0.0")
+.package(url: "https://github.com/hafacc/MideaKit", from: "0.0.0")
 ```
 
 ## Usage

@@ -9,8 +9,8 @@ MideaKit discovers air conditioners on the local network, fetches each device's
 token/key from Midea's SmartHome cloud once, and from then on controls them
 entirely over the LAN. The cloud only hands out keys for devices registered to
 the signed-in account, so sign in with the MSmartHome account the devices were
-added to. Run ``Setup/run(account:password:)`` once, persist the returned
-``DeviceCredentials`` (for example with ``CredentialStore``), and reuse a
+added to. Run ``Setup/run(account:password:devices:)`` once, persist the returned
+``DeviceCredentials``, and reuse a
 ``MideaClient`` for all subsequent control.
 
 ```swift
@@ -41,7 +41,6 @@ its turn on the one connection, and starts its own timeout only when it runs.
 - ``MideaClient``
 - ``Setup``
 - ``DeviceCredentials``
-- ``CredentialStore``
 
 ### Device state and commands
 
@@ -69,6 +68,7 @@ its turn on the one connection, and starts its own timeout only when it runs.
 ### Errors
 
 - ``SetupError``
+- ``SetupFailure``
 - ``DiscoveryError``
 - ``CloudError``
 - ``TimeoutError``

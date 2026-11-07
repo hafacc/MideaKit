@@ -3,9 +3,9 @@ import Foundation
 /// Credentials and addressing for one device.
 ///
 /// During setup the app discovers these and fetches the token/key from the
-/// cloud, then persists them (Keychain, or a JSON file via `CredentialStore`)
-/// and reuses them for all subsequent local control. The token and key are
-/// encoded as hex strings, and decoding fails if either isn't valid hex.
+/// cloud, then persists them (they're `Codable`) and reuses them for all
+/// subsequent local control. The token and key are encoded as hex strings, and
+/// decoding fails if either isn't valid hex.
 public struct DeviceCredentials: Codable, Sendable {
   /// The device's advertised name.
   public let name: String
@@ -51,6 +51,18 @@ public struct DeviceCredentials: Codable, Sendable {
     self.token = token
     self.key = key
     self.serialNumber = serialNumber
+  }
+
+  /// Create credentials for a device found by ``Discovery``.
+  ///
+  /// - Parameters:
+  ///   - device: The device, as discovered.
+  ///   - token: The authentication token (empty for V2 devices).
+  ///   - key: The session key (empty for V2 devices).
+  public init(device: DiscoveredDevice, token: [UInt8] = [], key: [UInt8] = []) {
+    self.init(
+      name: device.name, id: device.id, ip: device.ip, port: device.port,
+      version: device.version, token: token, key: key, serialNumber: device.serialNumber)
   }
 
   /// Decode credentials, rejecting a token or key that isn't valid hex.
@@ -125,33 +137,6 @@ enum Hex {
     case UInt8(ascii: "A")...UInt8(ascii: "F"): character - UInt8(ascii: "A") + 10
     default: nil
     }
-  }
-}
-
-/// Persists `DeviceCredentials` to and from a JSON file as `{"devices": [...]}`.
-public enum CredentialStore {
-  private struct Cache: Codable { let devices: [DeviceCredentials] }
-
-  /// Load devices from a JSON file written by ``save(_:to:)``.
-  ///
-  /// - Parameter url: The file to read.
-  /// - Returns: The stored device credentials.
-  /// - Throws: An error if the file can't be read or decoded.
-  public static func load(from url: URL) throws -> [DeviceCredentials] {
-    let data = try Data(contentsOf: url)
-    return try JSONDecoder().decode(Cache.self, from: data).devices
-  }
-
-  /// Write devices to a JSON file in the shape ``load(from:)`` expects.
-  ///
-  /// - Parameters:
-  ///   - devices: The device credentials to persist.
-  ///   - url: The file to write.
-  /// - Throws: An error if the file can't be written.
-  public static func save(_ devices: [DeviceCredentials], to url: URL) throws {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    try encoder.encode(Cache(devices: devices)).write(to: url)
   }
 }
 

@@ -19,7 +19,7 @@ import Network
 /// unauthenticated `0x5A5A` transport with no handshake. The client selects the
 /// right one from the credentials' `version`.
 ///
-/// Construct it from the ``DeviceCredentials`` that ``Setup/run(account:password:)``
+/// Construct it from the ``DeviceCredentials`` that ``Setup/run(account:password:devices:)``
 /// returns, then reuse the instance:
 ///
 /// ```swift

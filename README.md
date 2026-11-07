@@ -60,7 +60,11 @@ let state = try await MideaClient.withSession(credentials: credentials) { client
 
 Setup throws `CloudError.loginRejected` when the cloud rejects the email or
 password, and `SetupError.notInAccount` when the AC isn't registered to that
-account, so an app can tell the two apart. Version-2 devices need no cloud key.
+account, so an app can tell the two apart. When no device can be set up, the
+error lists each device with the reason it failed. Version-2 devices need no
+cloud key, so a home with only those can call `Setup.run()` with no account.
+To set up devices that ignore broadcasts, discover them with `unicastTargets`
+and pass them in as `devices`.
 
 ### Manual setup
 
@@ -73,22 +77,10 @@ let session = try await cloud.login()
 
 let device = try await Discovery.discover().first!   // a DiscoveredDevice on the LAN
 
-// The cloud keys the token on the udpid; the byte order isn't discoverable, so
-// try both and use whichever the cloud answers (see "Token endianness").
-var pair: (token: [UInt8], key: [UInt8])?
-for bigEndian in [false, true] {
-    let udpid = UDPID.compute(deviceId: device.id, bigEndian: bigEndian)
-    if let found = try? await cloud.getToken(session, udpid: udpid, deviceId: device.id) {
-        pair = found
-        break
-    }
-}
-
-let client = MideaClient(credentials: DeviceCredentials(
-    name: device.name, id: device.id, ip: device.ip, port: device.port,
-    version: device.version, token: pair!.token, key: pair!.key,
-    serialNumber: device.serialNumber))
-print(try await client.refresh().targetTemperature)
+// Fetches the device's key and returns the pair the device accepts; throws
+// CloudError.notDeviceOwner for a device that isn't registered to this account.
+let credentials = try await Setup.credentials(for: device, session: session)
+print(try await MideaClient(credentials: credentials).refresh().targetTemperature)
 ```
 
 ## iOS
@@ -134,9 +126,8 @@ The official app computed that udpid using a particular byte order of the id whe
 it registered the device, and that order varies across firmware/app versions.
 Nothing in the device's discovery reply or the cloud API reports which order was
 used, so it can't be computed or detected locally — the only signal is the cloud
-itself. So setup computes both candidates and calls `getToken` for each; whichever
-returns a token is correct. Hence `Setup` (and the manual example) try
-little-endian, then big-endian.
+itself, and it may answer for both with different pairs. So `Setup.credentials`
+fetches the pair under each order and keeps the one the device itself accepts.
 
 ### Device ids and JSON
 

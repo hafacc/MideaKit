@@ -83,16 +83,33 @@ enum Frame {
   }
 }
 
-enum ProtocolError: Error {
+/// A failure talking to a device over the LAN.
+///
+/// ``MideaClient`` retries once after ``connectionClosed``; every other case is
+/// thrown to the caller as is.
+public enum ProtocolError: Error, Equatable {
+  /// A packet or frame was shorter than its format requires.
   case shortPacket
+  /// A packet or frame didn't begin with the expected marker.
   case badStartOfPacket
+  /// A frame's checksum didn't match its contents.
   case checksumMismatch
+  /// A packet's signature or hash didn't match its contents.
   case hashMismatch
+  /// An encrypted packet was sent or received before the key handshake.
   case notAuthenticated
+  /// The device answered with an error packet.
   case errorPacket
+  /// The device sent a packet of a type this library doesn't handle.
   case unexpectedPacketType(UInt8)
+  /// The device's handshake reply had the wrong shape.
   case invalidHandshake
+  /// The device sent other replies but no state report.
+  case noStateResponse
+  /// The device closed the connection.
   case connectionClosed
+  /// An AES operation failed with the given CommonCrypto status.
+  case cryptoFailed(status: Int32)
 }
 
 /// Security constants and the inner "V2" (0x5A5A) packet codec.

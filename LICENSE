@@ -25,3 +25,10 @@ SOFTWARE.
 
 This library's protocol implementation is derived from [msmart-ng](https://github.com/mill1000/midea-msmart),
 which is also MIT licensed.
+
+msmart-ng is distributed under the MIT License with the following copyright notices:
+
+Copyright (c) 2022-2026 Tucker Kern
+Copyright (c) 2020 Colin Kuebler (@kueblc)
+Copyright (c) 2020 Mac_Zhou (@mac-zhou)
+Copyright (c) 2018 NeoAcheron

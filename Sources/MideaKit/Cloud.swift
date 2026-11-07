@@ -57,6 +57,6 @@ enum UDPID {
     if bigEndian { bytes.reverse() }
     let hash = Crypto.sha256(bytes)
     let folded = (0..<16).map { hash[$0] ^ hash[$0 + 16] }
-    return DeviceCredentials.bytesToHex(folded)
+    return Hex.encode(folded)
   }
 }

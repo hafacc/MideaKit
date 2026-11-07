@@ -116,7 +116,7 @@ public enum Setup {
       await client.disconnect()
       return DeviceCredentials(
         name: device.name, id: device.id, ip: device.ip, port: device.port,
-        version: device.version, token: "", key: "", serialNumber: device.serialNumber)
+        version: device.version, token: [], key: [], serialNumber: device.serialNumber)
     } catch {
       await client.disconnect()
       return nil
@@ -131,7 +131,7 @@ public enum Setup {
   ) async -> Outcome {
     var notOwned = false
     for bigEndian in [false, true] {
-      let pair: (token: String, key: String)
+      let pair: (token: [UInt8], key: [UInt8])
       do {
         pair = try await cloud.getToken(session, deviceId: device.id, bigEndian: bigEndian)
       } catch CloudError.notDeviceOwner {
@@ -140,18 +140,15 @@ public enum Setup {
       } catch {
         continue
       }
-      let client = MideaClient(
-        host: device.ip, port: device.port, deviceId: device.id, version: device.version,
-        token: DeviceCredentials.hexToBytes(pair.token),
-        key: DeviceCredentials.hexToBytes(pair.key))
+      let credentials = DeviceCredentials(
+        name: device.name, id: device.id, ip: device.ip, port: device.port,
+        version: device.version, token: pair.token, key: pair.key,
+        serialNumber: device.serialNumber)
+      let client = MideaClient(credentials: credentials)
       do {
         _ = try await client.refresh()
         await client.disconnect()
-        return .provisioned(
-          DeviceCredentials(
-            name: device.name, id: device.id, ip: device.ip, port: device.port,
-            version: device.version, token: pair.token, key: pair.key,
-            serialNumber: device.serialNumber))
+        return .provisioned(credentials)
       } catch {
         await client.disconnect()
         continue

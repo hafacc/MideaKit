@@ -12,7 +12,7 @@ import Testing
     return try JSONSerialization.jsonObject(with: data) as! [String: Any]
   }
 
-  private func hex(_ string: String) -> [UInt8] { DeviceCredentials.hexToBytes(string) }
+  private func hex(_ string: String) -> [UInt8] { Hex.decode(string)! }
   private func toHex(_ bytes: [UInt8]) -> String {
     bytes.map { String(format: "%02x", $0) }.joined()
   }

@@ -75,7 +75,7 @@ let device = try Discovery.discover().first!   // a DiscoveredDevice on the LAN 
 
 // The cloud keys the token on the udpid; the byte order isn't discoverable, so
 // try both and use whichever the cloud answers (see "Token endianness").
-var pair: (token: String, key: String)?
+var pair: (token: [UInt8], key: [UInt8])?
 for bigEndian in [false, true] {
     let udpid = UDPID.compute(deviceId: device.id, bigEndian: bigEndian)
     if let found = try? await cloud.getToken(session, udpid: udpid, deviceId: device.id) {

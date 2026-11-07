@@ -86,10 +86,9 @@ public final class SmartHomeCloud: Sendable {
     }
   }
 
-  /// Fetch the token/key pair, hex-encoded, the cloud files under one byte order of
-  /// `deviceId`.
+  /// Fetch the token/key pair the cloud files under one byte order of `deviceId`.
   func getToken(_ session: SmartHomeSession, deviceId: UInt64, bigEndian: Bool)
-    async throws -> (token: String, key: String)
+    async throws -> (token: [UInt8], key: [UInt8])
   {
     let udpid = UDPID.compute(deviceId: deviceId, bigEndian: bigEndian)
     let result: [String: Any]
@@ -106,7 +105,10 @@ public final class SmartHomeCloud: Sendable {
     }
     for entry in list where (entry["udpId"] as? String) == udpid {
       if let token = entry["token"] as? String, let key = entry["key"] as? String {
-        return (token, key)
+        guard let tokenBytes = Hex.decode(token), let keyBytes = Hex.decode(key) else {
+          throw CloudError.invalidResponse("Token or key isn't hex")
+        }
+        return (tokenBytes, keyBytes)
       }
     }
     throw CloudError.keyNotFound(udpid: udpid)
@@ -164,7 +166,7 @@ public final class SmartHomeCloud: Sendable {
     let message = Data(iotKey.utf8) + contents + Data(random.utf8)
     let mac = HMAC<SHA256>.authenticationCode(
       for: message, using: SymmetricKey(data: Data(hmacKey.utf8)))
-    return DeviceCredentials.bytesToHex(Array(mac))
+    return Hex.encode(Array(mac))
   }
 
   /// Hash the password for the login's `password` field.
@@ -178,15 +180,15 @@ public final class SmartHomeCloud: Sendable {
   }
 
   private static func hexSHA256(_ string: String) -> String {
-    DeviceCredentials.bytesToHex(Crypto.sha256(Array(string.utf8)))
+    Hex.encode(Crypto.sha256(Array(string.utf8)))
   }
 
   private static func hexMD5(_ string: String) -> String {
-    DeviceCredentials.bytesToHex(Crypto.md5(Array(string.utf8)))
+    Hex.encode(Crypto.md5(Array(string.utf8)))
   }
 
   private static func randomHex(byteCount: Int) -> String {
-    DeviceCredentials.bytesToHex((0..<byteCount).map { _ in UInt8.random(in: 0...255) })
+    Hex.encode((0..<byteCount).map { _ in UInt8.random(in: 0...255) })
   }
 
   // Built once and reused instead of per request.

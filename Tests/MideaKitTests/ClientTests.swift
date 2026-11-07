@@ -26,8 +26,8 @@ private actor RequestLog {
   private let deviceId: UInt64 = 0x0000_0102_0304
 
   /// Captured from a real unit; parses as a 0xC0 state response at 22 °C.
-  private static let stateResponse = DeviceCredentials.hexToBytes(
-    "aa23ac00000000000303c00146507f7f000000000064580000000000000000000000001a")
+  private static let stateResponse = Hex.decode(
+    "aa23ac00000000000303c00146507f7f000000000064580000000000000000000000001a")!
 
   /// A version-2 device that answers every request with `stateResponse` after
   /// `replyDelay`, recording what it saw in `log`.

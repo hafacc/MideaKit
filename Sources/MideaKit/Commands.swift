@@ -1,23 +1,113 @@
 import Synchronization
 
 /// The air conditioner's operating mode.
-public enum OperationalMode: UInt8, CaseIterable, Sendable {
-  case auto = 1
-  case cool = 2
-  case dry = 3
-  case heat = 4
-  case fanOnly = 5
-  case smartDry = 6
+///
+/// The named values cover the modes Midea units report; a unit may report another
+/// value, which is kept rather than dropped.
+public struct OperationalMode: RawRepresentable, Hashable, CaseIterable, Sendable,
+  CustomStringConvertible
+{
+  /// The 3-bit mode value on the wire.
+  public let rawValue: UInt8
+
+  /// Create a mode from its wire value; only the low 3 bits are sent.
+  public init(rawValue: UInt8) {
+    self.rawValue = rawValue
+  }
+
+  /// The unit picks heating or cooling itself.
+  public static let auto = Self(rawValue: 1)
+  /// Cooling.
+  public static let cool = Self(rawValue: 2)
+  /// Dehumidifying.
+  public static let dry = Self(rawValue: 3)
+  /// Heating.
+  public static let heat = Self(rawValue: 4)
+  /// Fan only, no heating or cooling.
+  public static let fanOnly = Self(rawValue: 5)
+  /// Dehumidifying toward ``SetState/targetHumidity``.
+  public static let smartDry = Self(rawValue: 6)
+
+  /// The named modes.
+  public static let allCases: [Self] = [.auto, .cool, .dry, .heat, .fanOnly, .smartDry]
+
+  /// The mode's name, such as `cool`, or `mode(7)` for an unnamed value.
+  public var description: String {
+    switch self {
+    case .auto: "auto"
+    case .cool: "cool"
+    case .dry: "dry"
+    case .heat: "heat"
+    case .fanOnly: "fanOnly"
+    case .smartDry: "smartDry"
+    default: "mode(\(rawValue))"
+    }
+  }
 }
 
-/// A fan-speed setting. `auto` lets the unit choose; `max` is full power.
-public enum FanSpeed: UInt8, CaseIterable, Sendable {
-  case silent = 20
-  case low = 40
-  case medium = 60
-  case high = 80
-  case auto = 102
-  case max = 100
+/// A fan-speed setting.
+///
+/// ``auto`` lets the unit choose and ``max`` is full power. Units also accept and
+/// report other speeds from 0 to 100, which are kept as they are.
+public struct FanSpeed: RawRepresentable, Hashable, CaseIterable, Sendable,
+  CustomStringConvertible
+{
+  /// The 7-bit speed value on the wire.
+  public let rawValue: UInt8
+
+  /// Create a speed from its wire value; only the low 7 bits are sent.
+  public init(rawValue: UInt8) {
+    self.rawValue = rawValue
+  }
+
+  /// Quietest speed.
+  public static let silent = Self(rawValue: 20)
+  /// Low speed.
+  public static let low = Self(rawValue: 40)
+  /// Medium speed.
+  public static let medium = Self(rawValue: 60)
+  /// High speed.
+  public static let high = Self(rawValue: 80)
+  /// Full power.
+  public static let max = Self(rawValue: 100)
+  /// The unit picks the speed.
+  public static let auto = Self(rawValue: 102)
+
+  /// The named speeds.
+  public static let allCases: [Self] = [.silent, .low, .medium, .high, .max, .auto]
+
+  /// The speed's name, such as `auto`, or `speed(55)` for an unnamed value.
+  public var description: String {
+    switch self {
+    case .silent: "silent"
+    case .low: "low"
+    case .medium: "medium"
+    case .high: "high"
+    case .max: "max"
+    case .auto: "auto"
+    default: "speed(\(rawValue))"
+    }
+  }
+}
+
+/// Which louvers swing.
+public struct SwingMode: OptionSet, Hashable, Sendable {
+  /// The 4-bit swing mask on the wire.
+  public let rawValue: UInt8
+
+  /// Create a swing setting from its wire mask.
+  public init(rawValue: UInt8) {
+    self.rawValue = rawValue
+  }
+
+  /// No swing.
+  public static let off: Self = []
+  /// Side-to-side swing.
+  public static let horizontal = Self(rawValue: 0x3)
+  /// Up-and-down swing.
+  public static let vertical = Self(rawValue: 0xC)
+  /// Both directions.
+  public static let both: Self = [.horizontal, .vertical]
 }
 
 /// Global message-id counter, mirroring msmart's incrementing id.
@@ -86,17 +176,14 @@ public struct SetState: Sendable {
   /// The target temperature in degrees Celsius, in 0.5° steps. Clamped to 17–30
   /// when sent.
   public var targetTemperature: Double
-  /// The operating mode; set from an ``OperationalMode`` raw value, e.g.
-  /// `OperationalMode.cool.rawValue`.
-  public var mode: UInt8
-  /// The fan speed; set from a ``FanSpeed`` raw value, e.g.
-  /// `FanSpeed.auto.rawValue`. Other values 0–127 are accepted.
-  public var fanSpeed: UInt8
+  /// The operating mode.
+  public var mode: OperationalMode
+  /// The fan speed.
+  public var fanSpeed: FanSpeed
   /// Whether energy-saving (eco) mode is on.
   public var eco: Bool
-  /// The louver swing, as a bitmask: 0 = off, 3 = horizontal, 12 = vertical,
-  /// 15 = both.
-  public var swingMode: UInt8
+  /// Which louvers swing.
+  public var swingMode: SwingMode
   /// Whether turbo (boost) mode is on.
   public var turbo: Bool
   /// Whether sleep mode is on.
@@ -159,8 +246,8 @@ public struct SetState: Sendable {
     }
     if hasHalf { temperature |= 0x10 }
 
-    let modeByte: UInt8 = (mode & 0x7) << 5
-    let swingByte: UInt8 = 0x30 | (swingMode & 0x3F)
+    let modeByte: UInt8 = (mode.rawValue & 0x7) << 5
+    let swingByte: UInt8 = 0x30 | (swingMode.rawValue & 0x3F)
     let ecoByte: UInt8 = eco ? 0x80 : 0
     let purifierByte: UInt8 = purifier ? 0x20 : 0
     let sleepByte: UInt8 = sleep ? 0x01 : 0
@@ -174,7 +261,7 @@ public struct SetState: Sendable {
       0x40,
       controlSource | beepByte | powerByte,
       temperature | modeByte,
-      fanSpeed,
+      fanSpeed.rawValue & 0x7F,
       0x7F, 0x7F, 0x00,
       swingByte,
       turboAlt,
@@ -199,17 +286,16 @@ public struct ACState: Sendable {
   public var powerOn: Bool
   /// The target temperature in degrees Celsius.
   public var targetTemperature: Double
-  /// The operating mode, as an `OperationalMode` raw value.
-  public var mode: UInt8
-  /// The fan speed, as a `FanSpeed` raw value.
-  public var fanSpeed: UInt8
+  /// The operating mode.
+  public var mode: OperationalMode
+  /// The fan speed.
+  public var fanSpeed: FanSpeed
   /// The measured indoor temperature, or nil if unavailable.
   public var indoorTemperature: Double?
   /// The measured outdoor temperature, or nil if unavailable.
   public var outdoorTemperature: Double?
-  /// The louver swing, as a bitmask: 0 = off, 3 = horizontal, 12 = vertical,
-  /// 15 = both.
-  public var swingMode: UInt8
+  /// Which louvers swing.
+  public var swingMode: SwingMode
   /// Whether energy-saving (eco) mode is on.
   public var eco: Bool
   /// Whether turbo (boost) mode is on.
@@ -261,13 +347,13 @@ public struct ACState: Sendable {
     var state = ACState(
       powerOn: (payload[1] & 0x1) != 0,
       targetTemperature: target,
-      mode: (payload[2] >> 5) & 0x7,
-      fanSpeed: payload[3] & 0x7F,
+      mode: OperationalMode(rawValue: (payload[2] >> 5) & 0x7),
+      fanSpeed: FanSpeed(rawValue: payload[3] & 0x7F),
       indoorTemperature: parseTemperature(
         payload[11], decimals: Double(payload[15] & 0xF) / 10, fahrenheit: fahrenheit),
       outdoorTemperature: parseTemperature(
         payload[12], decimals: Double(payload[15] >> 4) / 10, fahrenheit: fahrenheit),
-      swingMode: payload[7] & 0xF,
+      swingMode: SwingMode(rawValue: payload[7] & 0xF),
       eco: (payload[9] & 0x10) != 0,
       turbo: (payload[8] & 0x20) != 0 || (payload[10] & 0x2) != 0,
       sleep: (payload[10] & 0x1) != 0,

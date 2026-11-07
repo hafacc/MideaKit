@@ -40,14 +40,12 @@ let credentials = try await Setup.run(account: "you@example.com", password: "pw"
 // All local from here — store the credentials (Keychain) and reuse:
 let client = MideaClient(credentials: credentials)
 let state = try await client.refresh()
-if let mode = OperationalMode(rawValue: state.mode) {
-    print(state.targetTemperature, mode)  // e.g. 22.0 cool
-}
+print(state.targetTemperature, state.mode)  // e.g. 22.0 cool
 
 _ = try await client.apply { set in
     set.powerOn = true
     set.targetTemperature = 22
-    set.mode = OperationalMode.cool.rawValue
+    set.mode = .cool
 }
 ```
 

@@ -47,10 +47,10 @@ import Testing
     let state = ACState(
       powerOn: params["power_on"] as! Bool,
       targetTemperature: params["target_temperature"] as! Double,
-      mode: UInt8(params["operational_mode"] as! Int),
-      fanSpeed: UInt8(params["fan_speed"] as! Int),
+      mode: OperationalMode(rawValue: UInt8(params["operational_mode"] as! Int)),
+      fanSpeed: FanSpeed(rawValue: UInt8(params["fan_speed"] as! Int)),
       indoorTemperature: nil, outdoorTemperature: nil,
-      swingMode: UInt8(params["swing_mode"] as! Int),
+      swingMode: SwingMode(rawValue: UInt8(params["swing_mode"] as! Int)),
       eco: params["eco"] as! Bool, turbo: params["turbo"] as! Bool,
       sleep: params["sleep"] as! Bool,
       fahrenheit: params["fahrenheit"] as! Bool, purifier: params["purifier"] as! Bool,
@@ -75,8 +75,8 @@ import Testing
     let state = try ACState.parse(frame: hex(response["frame"] as! String))!
     #expect(state.powerOn == parsed["power_on"] as! Bool)
     #expect(state.targetTemperature == parsed["target_temperature"] as! Double)
-    #expect(Int(state.mode) == parsed["operational_mode"] as! Int)
-    #expect(Int(state.fanSpeed) == parsed["fan_speed"] as! Int)
+    #expect(Int(state.mode.rawValue) == parsed["operational_mode"] as! Int)
+    #expect(Int(state.fanSpeed.rawValue) == parsed["fan_speed"] as! Int)
     #expect(state.indoorTemperature == parsed["indoor_temperature"] as? Double)
     #expect(state.outdoorTemperature == parsed["outdoor_temperature"] as? Double)
     #expect(state.displayOn == parsed["display_on"] as! Bool)

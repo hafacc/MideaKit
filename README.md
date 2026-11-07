@@ -16,7 +16,8 @@ made, so overlapping calls from different tasks are safe.
 ## Features
 
 - **Discovery** of devices on the LAN (UDP broadcast).
-- **Cloud key fetch** (NetHome Plus) to obtain a device's token/key once.
+- **Cloud key fetch** (Midea's SmartHome cloud, the MSmartHome app's backend) to
+  obtain a device's token/key once, with the account the device is registered to.
 - **Setup**: discover → fetch key → verify → credentials.
 - **Local control**: power, mode, temperature, fan, eco/turbo/swing, display
   toggle; reads full state. Persistent connection with cheap polling.
@@ -32,11 +33,9 @@ made, so overlapping calls from different tasks are safe.
 ```swift
 import MideaKit
 
-// One-time setup (touches the cloud once). Uses a shared community account by
-// default; pass your own NetHome Plus account for reliability:
-let credentials = try await Setup.run().first!                              // shared US default
-// let credentials = try await Setup.run(cloud: NetHomePlusCloud(region: "DE")).first!
-// let credentials = try await Setup.run(cloud: NetHomePlusCloud(account: "you@example.com", password: "pw")).first!
+// One-time setup (touches the cloud once). Sign in with the MSmartHome account
+// the AC is registered to; the cloud only hands out keys for that account's devices.
+let credentials = try await Setup.run(account: "you@example.com", password: "pw").first!
 
 // All local from here — store the credentials (Keychain) and reuse:
 let client = MideaClient(credentials: credentials)
@@ -61,13 +60,17 @@ let state = try await MideaClient.withSession(credentials: credentials) { client
 }
 ```
 
+Setup throws `CloudError.loginRejected` when the cloud rejects the email or
+password, and `SetupError.notInAccount` when the AC isn't registered to that
+account, so an app can tell the two apart. Version-2 devices need no cloud key.
+
 ### Manual setup
 
 `Setup.run` is the high-level path. The same steps are exposed individually if you
 want to drive setup yourself — discover, fetch the key from the cloud, then connect:
 
 ```swift
-let cloud = NetHomePlusCloud(account: "you@example.com", password: "pw")  // or NetHomePlusCloud(region:)
+let cloud = SmartHomeCloud(account: "you@example.com", password: "pw")
 let session = try await cloud.login()
 
 let device = try Discovery.discover().first!   // a DiscoveredDevice on the LAN (discover() blocks)
@@ -77,7 +80,7 @@ let device = try Discovery.discover().first!   // a DiscoveredDevice on the LAN 
 var pair: (token: String, key: String)?
 for bigEndian in [false, true] {
     let udpid = UDPID.compute(deviceId: device.id, bigEndian: bigEndian)
-    if let found = try? await cloud.getToken(session, udpid: udpid) {
+    if let found = try? await cloud.getToken(session, udpid: udpid, deviceId: device.id) {
         pair = found
         break
     }

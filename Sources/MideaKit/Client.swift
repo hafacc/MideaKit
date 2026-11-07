@@ -19,14 +19,14 @@ import Network
 /// unauthenticated `0x5A5A` transport with no handshake. The client selects the
 /// right one from the credentials' `version`.
 ///
-/// Construct it from the ``DeviceCredentials`` that ``Setup/run(cloud:)``
+/// Construct it from the ``DeviceCredentials`` that ``Setup/run(account:password:)``
 /// returns, then reuse the instance:
 ///
 /// ```swift
 /// import MideaKit
 ///
 /// // One-time setup contacts the cloud to fetch each device's key:
-/// let credentials = try await Setup.run().first!
+/// let credentials = try await Setup.run(account: "you@example.com", password: "pw").first!
 ///
 /// // Everything after is local. Persist the credentials and reuse the client:
 /// let client = MideaClient(credentials: credentials)

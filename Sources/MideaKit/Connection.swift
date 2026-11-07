@@ -4,6 +4,13 @@ import Network
 /// Thrown when a connect or read does not complete within its timeout.
 public struct TimeoutError: Error {}
 
+/// Errors from the version-3 key handshake.
+public enum HandshakeError: Error {
+  /// The device turned down the token, or answered with a reply the key can't
+  /// verify: the token/key pair is wrong for this device. Trying again won't help.
+  case rejected
+}
+
 /// One thing a reader can observe: a complete framed packet, the expiry of a
 /// read's own timer, or the end of the stream.
 private enum Event: Sendable {
@@ -196,17 +203,23 @@ public final class MideaConnection: @unchecked Sendable {
   /// - Parameters:
   ///   - token: The authentication token sent to the device.
   ///   - key: The key the handshake response is verified against.
-  /// - Throws: An error if the handshake fails or the response can't be verified.
+  /// - Throws: ``HandshakeError/rejected`` if the device refuses the token or its
+  ///   reply doesn't verify against `key`, or another error if the exchange fails.
   public func authenticate(token: [UInt8], key: [UInt8]) async throws {
     try await writeRaw(encodeHandshake(token))
     let packet = try await readPacket()
-    let data = try process(packet)
+    let data: [UInt8]
+    do {
+      data = try process(packet)
+    } catch ProtocolError.errorPacket {
+      throw HandshakeError.rejected
+    }
     guard data.count == 64 else { throw ProtocolError.invalidHandshake }
 
     let payload = Array(data[0..<32])
     let receivedHash = Array(data[32...])
     let decrypted = try Crypto.decryptCBC(key: key, payload)
-    guard Crypto.sha256(decrypted) == receivedHash else { throw ProtocolError.hashMismatch }
+    guard Crypto.sha256(decrypted) == receivedHash else { throw HandshakeError.rejected }
     localKey = Crypto.xor(decrypted, key)
   }
 

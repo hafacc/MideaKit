@@ -37,6 +37,26 @@ import Testing
     #expect(try await connection.readApplicationFrame(timeout: 3) == [0xBB, 0x03])
   }
 
+  /// A device that answers the handshake with an error packet has turned the token down.
+  @Test(.timeLimit(.minutes(1))) func handshakeErrorPacketIsRejection() async throws {
+    let device = try await FakeDevice.start { connection in
+      _ = try await connection.receive(atLeast: 1, atMost: 65536)
+      try await connection.send(Data([0x83, 0x70, 0x00, 0x02, 0x20, 0x0F, 0x00, 0x00, 0x00, 0x00]))
+      try await Task.sleep(for: .seconds(10))
+    }
+    defer { device.stop() }
+
+    let connection = MideaConnection(
+      host: "127.0.0.1", port: device.port, deviceId: deviceId, version: 3)
+    defer { connection.disconnect() }
+
+    try await connection.connect()
+    await #expect(throws: HandshakeError.rejected) {
+      try await connection.authenticate(
+        token: [UInt8](repeating: 0, count: 64), key: [UInt8](repeating: 0, count: 32))
+    }
+  }
+
   /// A read that times out mid-packet must leave the bytes it already saw in the
   /// buffer, so the next read picks the packet up where the first one left off.
   @Test(.timeLimit(.minutes(1))) func timeoutKeepsBufferedBytes() async throws {

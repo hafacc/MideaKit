@@ -15,6 +15,18 @@ public struct DiscoveredDevice: Sendable {
   public let name: String
   /// The device's serial number, or `nil` if it didn't report one.
   public let serialNumber: String?
+
+  /// Create a discovered device; ``Discovery/discover(timeout:)`` builds these from replies.
+  public init(
+    id: UInt64, ip: String, port: UInt16, version: Int, name: String, serialNumber: String?
+  ) {
+    self.id = id
+    self.ip = ip
+    self.port = port
+    self.version = version
+    self.name = name
+    self.serialNumber = serialNumber
+  }
 }
 
 /// Errors thrown by `Discovery.discover`.

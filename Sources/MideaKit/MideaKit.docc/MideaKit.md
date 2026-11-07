@@ -6,8 +6,10 @@ cloud after a one-time key fetch.
 ## Overview
 
 MideaKit discovers air conditioners on the local network, fetches each device's
-token/key from the NetHome Plus cloud once, and from then on controls them
-entirely over the LAN. Run ``Setup/run(cloud:)`` once, persist the returned
+token/key from Midea's SmartHome cloud once, and from then on controls them
+entirely over the LAN. The cloud only hands out keys for devices registered to
+the signed-in account, so sign in with the MSmartHome account the devices were
+added to. Run ``Setup/run(account:password:)`` once, persist the returned
 ``DeviceCredentials`` (for example with ``CredentialStore``), and reuse a
 ``MideaClient`` for all subsequent control.
 
@@ -15,7 +17,7 @@ entirely over the LAN. Run ``Setup/run(cloud:)`` once, persist the returned
 import MideaKit
 
 // One-time setup (touches the cloud once); persist the result and reuse it.
-let credentials = try await Setup.run().first!
+let credentials = try await Setup.run(account: "you@example.com", password: "pw").first!
 
 let client = MideaClient(credentials: credentials)
 let state = try await client.refresh()
@@ -56,9 +58,8 @@ its turn on the one connection, and starts its own timeout only when it runs.
 
 ### Cloud key fetch
 
-- ``NetHomePlusCloud``
-- ``CloudSession``
-- ``UDPID``
+- ``SmartHomeCloud``
+- ``SmartHomeSession``
 
 ### Low-level transport
 
@@ -70,3 +71,4 @@ its turn on the one connection, and starts its own timeout only when it runs.
 - ``DiscoveryError``
 - ``CloudError``
 - ``TimeoutError``
+- ``HandshakeError``

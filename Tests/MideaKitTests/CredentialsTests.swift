@@ -4,6 +4,18 @@ import Testing
 @testable import MideaKit
 
 @Suite struct CredentialsTests {
+  /// Credentials built from a discovered device carry its addressing.
+  @Test func buildsFromDiscoveredDevice() {
+    let device = DiscoveredDevice(
+      id: 7, ip: "10.0.0.9", port: 6444, version: 3, name: "ac", serialNumber: "SN")
+    let credentials = DeviceCredentials(device: device, token: [0xAA, 0xBB], key: [0xCC, 0xDD])
+
+    #expect(credentials.id == 7)
+    #expect(credentials.ip == "10.0.0.9")
+    #expect(credentials.serialNumber == "SN")
+    #expect(credentials.key == [0xCC, 0xDD])
+  }
+
   /// Credentials persisted before `serialNumber` existed must still decode, with the
   /// serial reported as absent rather than failing the whole load.
   @Test func decodesJSONPersistedWithoutSerialNumber() throws {

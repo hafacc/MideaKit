@@ -1,16 +1,26 @@
 import Foundation
 
-/// Errors thrown by ``Setup/run(account:password:)``.
+/// Errors thrown by ``Setup``.
 public enum SetupError: Error {
   /// LAN discovery found no devices to set up.
   case noDevicesFound
-  /// Devices were discovered, but none could be provisioned — every device
-  /// failed to fetch a cloud key (version 3) or failed local verification. This
-  /// usually means a cloud or connectivity problem, not an empty network.
-  case noCredentialsObtained
-  /// Devices were discovered, but none could be provisioned, and the cloud
-  /// reported at least one of them as not registered to the given account.
-  case notInAccount
+  /// Devices were discovered, but none could be set up; each failure says why.
+  case noCredentialsObtained([SetupFailure])
+  /// Devices were discovered, but none could be set up, and the cloud reported at
+  /// least one of them as not registered to the given account.
+  case notInAccount([SetupFailure])
+  /// A version-3 device needs a cloud key, but setup ran without an account.
+  case accountRequired
+}
+
+/// A discovered device that setup couldn't provision, and why.
+public struct SetupFailure: Error {
+  /// The device as discovered.
+  public let device: DiscoveredDevice
+  /// Why it failed: ``SetupError/accountRequired``, a ``CloudError`` from the key
+  /// fetch, or the error from the local check, such as ``HandshakeError/rejected``
+  /// or ``TimeoutError``.
+  public let error: any Error
 }
 
 /// One-shot setup: discover devices on the LAN, fetch each version-3 device's
@@ -19,13 +29,16 @@ public enum SetupError: Error {
 /// only step that contacts the cloud.
 ///
 /// Run it once with the MSmartHome account the devices are registered to, persist
-/// the result (for example with ``CredentialStore``), and from then on construct a
+/// the result (``DeviceCredentials`` is `Codable`), and from then on construct a
 /// ``MideaClient`` from the stored credentials without touching the cloud again:
 ///
 /// ```swift
 /// let credentials = try await Setup.run(account: "you@example.com", password: "pw")
-/// try CredentialStore.save(credentials, to: storeURL)
+/// try JSONEncoder().encode(credentials).write(to: storeURL)
 /// ```
+///
+/// A home with only version-2 devices can call ``run(devices:)`` with no account.
+/// To set up devices found some other way, pass them as `devices`.
 public enum Setup {
   /// Discover devices, fetch and verify their keys, and return credentials to store.
   ///
@@ -35,119 +48,166 @@ public enum Setup {
   /// - Parameters:
   ///   - account: The MSmartHome account email the devices are registered to.
   ///   - password: The MSmartHome account password.
+  ///   - devices: The devices to set up; `nil` runs ``Discovery`` with its defaults.
   /// - Returns: Credentials for every device that could be set up, ready to
   ///   store. Best-effort: a device whose key can't be fetched or that fails
   ///   local verification is omitted rather than failing the whole run.
   /// - Throws: ``SetupError/noDevicesFound`` if discovery finds no devices,
   ///   ``CloudError/loginRejected(code:message:)`` if the cloud rejects the email or
-  ///   password, ``SetupError/notInAccount`` if no device could be provisioned and
+  ///   password, ``SetupError/notInAccount(_:)`` if no device could be set up and
   ///   the cloud reported a device as not in the account, or
-  ///   ``SetupError/noCredentialsObtained`` if no device could be provisioned for
+  ///   ``SetupError/noCredentialsObtained(_:)`` if no device could be set up for
   ///   another reason.
-  public static func run(account: String, password: String) async throws
+  public static func run(
+    account: String, password: String, devices: [DiscoveredDevice]? = nil
+  ) async throws -> [DeviceCredentials] {
+    try await run(
+      cloud: SmartHomeCloud(account: account, password: password), devices: devices)
+  }
+
+  /// Discover and verify version-2 devices, which need no cloud account.
+  ///
+  /// Version-3 devices found along the way fail with ``SetupError/accountRequired``;
+  /// use ``run(account:password:devices:)`` for them.
+  ///
+  /// - Parameter devices: The devices to set up; `nil` runs ``Discovery`` with its
+  ///   defaults.
+  /// - Returns: Credentials for every version-2 device that answered, ready to store.
+  /// - Throws: ``SetupError/noDevicesFound`` if discovery finds no devices, or
+  ///   ``SetupError/noCredentialsObtained(_:)`` if none could be set up.
+  public static func run(devices: [DiscoveredDevice]? = nil) async throws
     -> [DeviceCredentials]
   {
-    let devices = try await Discovery.discover()
+    try await run(cloud: nil, devices: devices)
+  }
+
+  private static func run(cloud: SmartHomeCloud?, devices: [DiscoveredDevice]?) async throws
+    -> [DeviceCredentials]
+  {
+    let devices: [DiscoveredDevice] =
+      if let devices { devices } else { try await Discovery.discover() }
     guard !devices.isEmpty else { throw SetupError.noDevicesFound }
 
-    let cloud = SmartHomeCloud(account: account, password: password)
     let session: SmartHomeSession? =
-      devices.contains { $0.version >= 3 } ? try await cloud.login() : nil
+      if let cloud, devices.contains(where: { $0.version >= 3 }) {
+        try await cloud.login()
+      } else {
+        nil
+      }
 
     // Each device's cloud lookup + local verification is independent, so
     // provision them concurrently: total latency is ~one device's worth rather
     // than the sum over all devices.
-    let outcomes = await withTaskGroup(of: Outcome.self) { group in
+    let outcomes = await withTaskGroup(of: Result<DeviceCredentials, SetupFailure>.self) {
+      group in
       for device in devices {
-        group.addTask { await provision(device, cloud: cloud, session: session) }
+        group.addTask {
+          do {
+            return .success(try await credentials(for: device, session: session))
+          } catch {
+            return .failure(SetupFailure(device: device, error: error))
+          }
+        }
       }
-      var collected: [Outcome] = []
+      var collected: [Result<DeviceCredentials, SetupFailure>] = []
       for await outcome in group { collected.append(outcome) }
       return collected
     }
+    return try collect(outcomes)
+  }
 
-    let results = outcomes.compactMap { outcome -> DeviceCredentials? in
-      if case .provisioned(let credentials) = outcome { credentials } else { nil }
-    }
-    // Discovery found devices but nothing could be provisioned — surface that
-    // distinctly rather than returning an empty array that looks like "nothing found".
-    guard !results.isEmpty else {
-      if outcomes.contains(where: { if case .notOwned = $0 { true } else { false } }) {
-        throw SetupError.notInAccount
-      } else {
-        throw SetupError.noCredentialsObtained
+  /// Return the credentials obtained, or throw the error that explains why there are none.
+  static func collect(_ outcomes: [Result<DeviceCredentials, SetupFailure>]) throws
+    -> [DeviceCredentials]
+  {
+    var results: [DeviceCredentials] = []
+    var failures: [SetupFailure] = []
+    for outcome in outcomes {
+      switch outcome {
+      case .success(let credentials): results.append(credentials)
+      case .failure(let failure): failures.append(failure)
       }
     }
-    return results
+    guard results.isEmpty else { return results }
+    let notOwned = failures.contains {
+      if case CloudError.notDeviceOwner = $0.error { true } else { false }
+    }
+    throw notOwned
+      ? SetupError.notInAccount(failures) : SetupError.noCredentialsObtained(failures)
   }
 
-  private enum Outcome: Sendable {
-    case provisioned(DeviceCredentials)
-    case notOwned
-    case failed
+  /// Fetch and check the credentials for one device.
+  ///
+  /// A version-3 device's key comes from the cloud through `session`. The cloud may
+  /// file it under either byte order of the device id and answer for both with
+  /// different pairs, so this fetches both at once and returns the one the device accepts. A
+  /// version-2 device needs no session.
+  ///
+  /// - Parameters:
+  ///   - device: The device, as discovered.
+  ///   - session: A session from ``SmartHomeCloud/login()``; needed for version 3.
+  /// - Returns: Credentials the device answered a local query with, ready to store.
+  /// - Throws: ``SetupError/accountRequired`` for a version-3 device without a
+  ///   session. Otherwise the error that best explains the failure: the device
+  ///   refusing a key (such as ``HandshakeError/rejected``), then
+  ///   ``CloudError/notDeviceOwner(message:)``, then any other cloud error.
+  public static func credentials(for device: DiscoveredDevice, session: SmartHomeSession?)
+    async throws -> DeviceCredentials
+  {
+    guard device.version >= 3 else {
+      return try await checked(DeviceCredentials(device: device))
+    }
+    guard let session else { throw SetupError.accountRequired }
+    async let littleEndian = fetchToken(session, device: device, bigEndian: false)
+    async let bigEndian = fetchToken(session, device: device, bigEndian: true)
+    var cloudError: (any Error)?
+    var checkError: (any Error)?
+    for fetched in [await littleEndian, await bigEndian] {
+      switch fetched {
+      case .failure(let error):
+        // Not being the owner explains a failure better than a missing key does.
+        if case CloudError.notDeviceOwner = error {
+          cloudError = error
+        } else if cloudError == nil {
+          cloudError = error
+        }
+      case .success(let pair):
+        do {
+          return try await checked(
+            DeviceCredentials(device: device, token: pair.token, key: pair.key))
+        } catch {
+          checkError = error
+        }
+      }
+    }
+    // A key the device turned down says more than a byte order the cloud didn't know.
+    // Each pass sets one of the two, so they can't both be nil.
+    throw (checkError ?? cloudError)!
   }
 
-  /// Provision one discovered device, verifying it answers a local query. A
-  /// version-3 device needs a cloud key first; a version-2 device needs none.
-  private static func provision(
-    _ device: DiscoveredDevice, cloud: SmartHomeCloud, session: SmartHomeSession?
-  ) async -> Outcome {
-    if device.version >= 3, let session {
-      return await provisionV3(device, cloud: cloud, session: session)
-    } else {
-      return await provisionV2(device).map(Outcome.provisioned) ?? .failed
+  private static func fetchToken(
+    _ session: SmartHomeSession, device: DiscoveredDevice, bigEndian: Bool
+  ) async -> Result<(token: [UInt8], key: [UInt8]), any Error> {
+    do {
+      return .success(
+        try await session.cloud.getToken(session, deviceId: device.id, bigEndian: bigEndian))
+    } catch {
+      return .failure(error)
     }
   }
 
-  /// Verify a version-2 device over its keyless transport, returning credentials
-  /// only if it answers a local query. V2 needs no cloud token.
-  private static func provisionV2(_ device: DiscoveredDevice) async -> DeviceCredentials? {
-    let client = MideaClient(
-      host: device.ip, port: device.port, deviceId: device.id,
-      version: device.version, token: [], key: [])
+  /// Return `credentials` if the device answers a local query with them.
+  private static func checked(_ credentials: DeviceCredentials) async throws
+    -> DeviceCredentials
+  {
+    let client = MideaClient(credentials: credentials)
     do {
       _ = try await client.refresh()
       await client.disconnect()
-      return DeviceCredentials(
-        name: device.name, id: device.id, ip: device.ip, port: device.port,
-        version: device.version, token: [], key: [], serialNumber: device.serialNumber)
+      return credentials
     } catch {
       await client.disconnect()
-      return nil
+      throw error
     }
-  }
-
-  /// Fetch a version-3 device's token/key from the cloud and verify it with a
-  /// local query. The cloud key is looked up by a udpid derived from the device
-  /// id; try both byte orders and keep the first pair that works.
-  private static func provisionV3(
-    _ device: DiscoveredDevice, cloud: SmartHomeCloud, session: SmartHomeSession
-  ) async -> Outcome {
-    var notOwned = false
-    for bigEndian in [false, true] {
-      let pair: (token: [UInt8], key: [UInt8])
-      do {
-        pair = try await cloud.getToken(session, deviceId: device.id, bigEndian: bigEndian)
-      } catch CloudError.notDeviceOwner {
-        notOwned = true
-        continue
-      } catch {
-        continue
-      }
-      let credentials = DeviceCredentials(
-        name: device.name, id: device.id, ip: device.ip, port: device.port,
-        version: device.version, token: pair.token, key: pair.key,
-        serialNumber: device.serialNumber)
-      let client = MideaClient(credentials: credentials)
-      do {
-        _ = try await client.refresh()
-        await client.disconnect()
-        return .provisioned(credentials)
-      } catch {
-        await client.disconnect()
-        continue
-      }
-    }
-    return notOwned ? .notOwned : .failed
   }
 }

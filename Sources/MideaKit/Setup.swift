@@ -47,13 +47,7 @@ public enum Setup {
   public static func run(account: String, password: String) async throws
     -> [DeviceCredentials]
   {
-    // Discovery is a blocking UDP listen loop; run it off the cooperative pool
-    // so it doesn't stall a Swift concurrency thread for the whole timeout.
-    let devices = try await withCheckedThrowingContinuation { continuation in
-      DispatchQueue.global(qos: .userInitiated).async {
-        continuation.resume(with: Result { try Discovery.discover() })
-      }
-    }
+    let devices = try await Discovery.discover()
     guard !devices.isEmpty else { throw SetupError.noDevicesFound }
 
     let cloud = SmartHomeCloud(account: account, password: password)

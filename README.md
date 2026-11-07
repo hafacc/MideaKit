@@ -15,7 +15,7 @@ made, so overlapping calls from different tasks are safe.
 
 ## Features
 
-- **Discovery** of devices on the LAN (UDP broadcast).
+- **Discovery** of devices on the LAN (UDP broadcast, plus probes to given addresses for modules that ignore broadcasts).
 - **Cloud key fetch** (Midea's SmartHome cloud, the MSmartHome app's backend) to
   obtain a device's token/key once, with the account the device is registered to.
 - **Setup**: discover → fetch key → verify → credentials.
@@ -71,7 +71,7 @@ want to drive setup yourself — discover, fetch the key from the cloud, then co
 let cloud = SmartHomeCloud(account: "you@example.com", password: "pw")
 let session = try await cloud.login()
 
-let device = try Discovery.discover().first!   // a DiscoveredDevice on the LAN (discover() blocks)
+let device = try await Discovery.discover().first!   // a DiscoveredDevice on the LAN
 
 // The cloud keys the token on the udpid; the byte order isn't discoverable, so
 // try both and use whichever the cloud answers (see "Token endianness").

@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-/// A device found on the LAN by `Discovery.discover`.
+/// A device found on the LAN by ``Discovery``.
 public struct DiscoveredDevice: Sendable {
   /// The device's numeric id.
   public let id: UInt64
@@ -16,7 +16,7 @@ public struct DiscoveredDevice: Sendable {
   /// The device's serial number, or `nil` if it didn't report one.
   public let serialNumber: String?
 
-  /// Create a discovered device; ``Discovery/discover(timeout:)`` builds these from replies.
+  /// Create a discovered device; ``Discovery`` builds these from replies.
   public init(
     id: UInt64, ip: String, port: UInt16, version: Int, name: String, serialNumber: String?
   ) {
@@ -29,7 +29,7 @@ public struct DiscoveredDevice: Sendable {
   }
 }
 
-/// Errors thrown by `Discovery.discover`.
+/// Errors thrown by ``Discovery``.
 public enum DiscoveryError: Error {
   /// The UDP broadcast socket could not be created.
   case socketCreationFailed
@@ -37,9 +37,9 @@ public enum DiscoveryError: Error {
 
 /// LAN discovery: broadcast the Midea probe and parse V2/V3 replies.
 ///
-/// `discover()` blocks the calling thread for up to `timeout` while it listens
-/// for replies, so call it off the main thread (or any cooperative-pool thread).
-/// `Setup.run` already dispatches it to a background queue.
+/// From async code, `try await Discovery.discover()` listens on a background
+/// thread. The synchronous form blocks the calling thread for the whole timeout,
+/// so keep it off the main thread.
 public enum Discovery {
   // The fixed Midea discovery probe (msmart DISCOVERY_MSG).
   private static let probe = Hex.decode(
@@ -48,12 +48,40 @@ public enum Discovery {
   private static let ports: [UInt16] = [6445, 20086]
 
   /// Broadcast the discovery probe and collect replying devices, listening for
-  /// up to `timeout` seconds. Blocks the calling thread; see the type's note.
+  /// `timeout` seconds on a background thread.
   ///
-  /// - Parameter timeout: How long, in seconds, to listen for replies.
-  /// - Returns: One entry per device that replied, de-duplicated by id.
+  /// - Parameters:
+  ///   - timeout: How long, in seconds, to listen for replies.
+  ///   - unicastTargets: IPv4 addresses to probe directly as well, for modules that
+  ///     ignore broadcasts and answer only a probe sent to their own address. To find
+  ///     such a module without knowing its address, pass every host on the subnet.
+  /// - Returns: One entry per device that replied, de-duplicated by id, in the
+  ///   order they answered.
   /// - Throws: ``DiscoveryError/socketCreationFailed`` if the socket can't open.
-  public static func discover(timeout: TimeInterval = 4) throws -> [DiscoveredDevice] {
+  public static func discover(timeout: TimeInterval = 4, unicastTargets: [String] = [])
+    async throws -> [DiscoveredDevice]
+  {
+    try await withCheckedThrowingContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        continuation.resume(
+          with: Result { try discover(timeout: timeout, unicastTargets: unicastTargets) })
+      }
+    }
+  }
+
+  /// Broadcast the discovery probe and collect replying devices, blocking the
+  /// calling thread for `timeout` seconds.
+  ///
+  /// - Parameters:
+  ///   - timeout: How long, in seconds, to listen for replies.
+  ///   - unicastTargets: IPv4 addresses to probe directly as well, for modules that
+  ///     ignore broadcasts.
+  /// - Returns: One entry per device that replied, de-duplicated by id, in the
+  ///   order they answered.
+  /// - Throws: ``DiscoveryError/socketCreationFailed`` if the socket can't open.
+  public static func discover(timeout: TimeInterval = 4, unicastTargets: [String] = [])
+    throws -> [DiscoveredDevice]
+  {
     let fd = socket(AF_INET, SOCK_DGRAM, 0)
     guard fd >= 0 else { throw DiscoveryError.socketCreationFailed }
     defer { close(fd) }
@@ -67,13 +95,15 @@ public enum Discovery {
 
     var targets = Set(broadcastAddresses())
     targets.insert("255.255.255.255")
+    targets.formUnion(unicastTargets)
     for target in targets {
       for port in ports {
         send(probe, to: target, port: port, fd: fd)
       }
     }
 
-    var found: [UInt64: DiscoveredDevice] = [:]
+    var found: [DiscoveredDevice] = []
+    var seen: Set<UInt64> = []
     var buffer = [UInt8](repeating: 0, count: 8192)
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
@@ -87,11 +117,11 @@ public enum Discovery {
       guard count > 0 else { continue }
       let data = Array(buffer[0..<count])
       let ip = ipString(from)
-      if let device = parse(data: data, ip: ip), found[device.id] == nil {
-        found[device.id] = device
+      if let device = parse(data: data, ip: ip), seen.insert(device.id).inserted {
+        found.append(device)
       }
     }
-    return Array(found.values)
+    return found
   }
 
   static func parse(data: [UInt8], ip: String) -> DiscoveredDevice? {

@@ -25,7 +25,7 @@ let state = try await client.refresh()
 _ = try await client.apply { set in
   set.powerOn = true
   set.targetTemperature = 22
-  set.mode = OperationalMode.cool.rawValue
+  set.mode = .cool
 }
 ```
 
@@ -49,6 +49,7 @@ its turn on the one connection, and starts its own timeout only when it runs.
 - ``SetState``
 - ``OperationalMode``
 - ``FanSpeed``
+- ``SwingMode``
 - ``Command``
 
 ### Discovery

@@ -53,8 +53,8 @@ import Testing
 
   @Test func targetTemperatureClampsToSupportedRange() {
     let base = ACState(
-      powerOn: true, targetTemperature: 22, mode: 0, fanSpeed: 0,
-      indoorTemperature: nil, outdoorTemperature: nil, swingMode: 0,
+      powerOn: true, targetTemperature: 22, mode: .auto, fanSpeed: .auto,
+      indoorTemperature: nil, outdoorTemperature: nil, swingMode: .off,
       eco: false, turbo: false, sleep: false, fahrenheit: false, purifier: false,
       displayOn: true, filterAlert: false, freezeProtection: false, targetHumidity: nil)
 
@@ -71,5 +71,14 @@ import Testing
     #expect(temperatureBytes(-5) == temperatureBytes(17))
     // Sanity: an in-range value still encodes distinctly from the clamp target.
     #expect(temperatureBytes(22) != temperatureBytes(30))
+  }
+
+  /// Named values print by name, and values without a name are kept and shown by number.
+  @Test func typedSettingsKeepUnnamedValues() {
+    #expect(OperationalMode.cool.description == "cool")
+    #expect(OperationalMode(rawValue: 7).description == "mode(7)")
+    #expect(FanSpeed(rawValue: 55).description == "speed(55)")
+    #expect(SwingMode.both.rawValue == 0xF)
+    #expect(SwingMode(rawValue: 0x3) == .horizontal)
   }
 }

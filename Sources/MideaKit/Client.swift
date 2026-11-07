@@ -147,7 +147,9 @@ public actor MideaClient {
   /// Query and return the device's current state.
   ///
   /// - Returns: The device's current state.
-  /// - Throws: An error if the device can't be reached or the exchange fails.
+  /// - Throws: ``TimeoutError`` if the device doesn't answer in time,
+  ///   ``HandshakeError/rejected`` if the token/key is wrong, a ``ProtocolError``
+  ///   if the exchange fails, or a network error if the device can't be reached.
   public func refresh() async throws -> ACState {
     try await serialized {
       try await withConnection { connection in
@@ -162,7 +164,9 @@ public actor MideaClient {
   ///
   /// - Parameter set: The complete state to send to the device.
   /// - Returns: The device's state after applying the change.
-  /// - Throws: An error if the device can't be reached or the exchange fails.
+  /// - Throws: ``TimeoutError`` if the device doesn't answer in time,
+  ///   ``HandshakeError/rejected`` if the token/key is wrong, a ``ProtocolError``
+  ///   if the exchange fails, or a network error if the device can't be reached.
   public func apply(_ set: SetState) async throws -> ACState {
     try await serialized {
       try await withConnection { connection in
@@ -176,7 +180,9 @@ public actor MideaClient {
   ///
   /// - Parameter beep: Whether the unit beeps to acknowledge the command.
   /// - Returns: The device's state after toggling the display.
-  /// - Throws: An error if the device can't be reached or the exchange fails.
+  /// - Throws: ``TimeoutError`` if the device doesn't answer in time,
+  ///   ``HandshakeError/rejected`` if the token/key is wrong, a ``ProtocolError``
+  ///   if the exchange fails, or a network error if the device can't be reached.
   public func toggleDisplay(beep: Bool = true) async throws -> ACState {
     try await serialized {
       // Relative command: don't retry, or a lost response double-toggles.
@@ -202,7 +208,9 @@ public actor MideaClient {
   /// - Parameter change: A closure that mutates a ``SetState`` seeded from the
   ///   device's current state.
   /// - Returns: The device's state after applying the change.
-  /// - Throws: An error if the device can't be reached or the exchange fails.
+  /// - Throws: ``TimeoutError`` if the device doesn't answer in time,
+  ///   ``HandshakeError/rejected`` if the token/key is wrong, a ``ProtocolError``
+  ///   if the exchange fails, or a network error if the device can't be reached.
   public func apply(_ change: sending (inout SetState) -> Void) async throws -> ACState {
     try await serialized {
       try await withConnection { connection in
@@ -325,6 +333,6 @@ public actor MideaClient {
       let frame = try await connection.readApplicationFrame()
       if let state = try ACState.parse(frame: frame) { return state }
     }
-    throw ProtocolError.unexpectedPacketType(0)
+    throw ProtocolError.noStateResponse
   }
 }

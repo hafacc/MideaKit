@@ -25,7 +25,7 @@ made, so overlapping calls from different tasks are safe.
 ## Install (Swift Package Manager)
 
 ```swift
-.package(url: "https://github.com/hafacc/MideaKit", from: "0.0.0")
+.package(url: "https://github.com/hafacc/MideaKit", from: "0.3.0")
 ```
 
 ## Usage

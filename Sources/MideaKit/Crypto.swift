@@ -22,10 +22,6 @@ enum Crypto {
     return zip(lhs, rhs).map { $0 ^ $1 }
   }
 
-  enum CryptoError: Error {
-    case operationFailed(status: Int32)
-  }
-
   private static func aes(
     operation: Int,
     options: Int,
@@ -46,7 +42,7 @@ enum Crypto {
       &outputCount
     )
     guard status == kCCSuccess else {
-      throw CryptoError.operationFailed(status: status)
+      throw ProtocolError.cryptoFailed(status: status)
     }
     return Array(output.prefix(outputCount))
   }

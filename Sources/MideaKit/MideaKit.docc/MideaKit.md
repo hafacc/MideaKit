@@ -73,3 +73,4 @@ its turn on the one connection, and starts its own timeout only when it runs.
 - ``CloudError``
 - ``TimeoutError``
 - ``HandshakeError``
+- ``ProtocolError``

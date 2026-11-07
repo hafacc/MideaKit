@@ -226,7 +226,8 @@ public final class MideaConnection: @unchecked Sendable {
   /// Send an application command frame to the device.
   ///
   /// - Parameter frame: The application command frame to send.
-  /// - Throws: An error if the connection isn't authenticated or the send fails.
+  /// - Throws: ``ProtocolError/notAuthenticated`` if a version-3 connection hasn't
+  ///   finished ``authenticate(token:key:)``, or a network error if the send fails.
   public func sendApplicationFrame(_ frame: [UInt8]) async throws {
     let packet = try V2Packet.encode(deviceId: deviceId, command: frame)
     // V3 wraps the 0x5A5A packet in the encrypted 8370 layer; V2 sends it bare.
@@ -239,8 +240,9 @@ public final class MideaConnection: @unchecked Sendable {
   /// - Parameter timeout: How long, in seconds, to wait for more bytes; a short
   ///   value lets a caller probe without blocking long.
   /// - Returns: The decoded application command frame.
-  /// - Throws: ``TimeoutError`` if the timeout elapses, or an error if the
-  ///   stream ends or a frame can't be decoded. Cancelling the calling task
+  /// - Throws: ``TimeoutError`` if the timeout elapses, a ``ProtocolError`` if the
+  ///   device closed the connection or a frame can't be decoded, or a network
+  ///   error if the connection failed. Cancelling the calling task
   ///   throws `CancellationError` and leaves the connection permanently
   ///   unusable, so discard it — as callers already do on any error.
   public func readApplicationFrame(timeout: TimeInterval = 8) async throws -> [UInt8] {

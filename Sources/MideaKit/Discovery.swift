@@ -42,9 +42,9 @@ public enum DiscoveryError: Error {
 /// `Setup.run` already dispatches it to a background queue.
 public enum Discovery {
   // The fixed Midea discovery probe (msmart DISCOVERY_MSG).
-  private static let probeHex =
+  private static let probe = Hex.decode(
     "5a5a01114800920000000000000000000000000000000000000000000000000000000000000000"
-    + "007f75bd6b3e4f8b762e849c6e578d6590036e9d4342a50f1f569eb8ec918e92e5"
+      + "007f75bd6b3e4f8b762e849c6e578d6590036e9d4342a50f1f569eb8ec918e92e5")!
   private static let ports: [UInt16] = [6445, 20086]
 
   /// Broadcast the discovery probe and collect replying devices, listening for
@@ -54,8 +54,6 @@ public enum Discovery {
   /// - Returns: One entry per device that replied, de-duplicated by id.
   /// - Throws: ``DiscoveryError/socketCreationFailed`` if the socket can't open.
   public static func discover(timeout: TimeInterval = 4) throws -> [DiscoveredDevice] {
-    let probe = DeviceCredentials.hexToBytes(probeHex)
-
     let fd = socket(AF_INET, SOCK_DGRAM, 0)
     guard fd >= 0 else { throw DiscoveryError.socketCreationFailed }
     defer { close(fd) }

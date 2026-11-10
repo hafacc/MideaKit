@@ -139,8 +139,8 @@ public enum Setup {
   /// Fetch and check the credentials for one device.
   ///
   /// A version-3 device's key comes from the cloud through `session`. The cloud may
-  /// file it under either byte order of the device id and answer for both with
-  /// different pairs, so this fetches both at once and returns the one the device accepts. A
+  /// file it under either byte order of the device id, and may answer for both with
+  /// different pairs, so this fetches both and returns the one the device accepts. A
   /// version-2 device needs no session.
   ///
   /// - Parameters:
@@ -148,9 +148,12 @@ public enum Setup {
   ///   - session: A session from ``SmartHomeCloud/login()``; needed for version 3.
   /// - Returns: Credentials the device answered a local query with, ready to store.
   /// - Throws: ``SetupError/accountRequired`` for a version-3 device without a
-  ///   session. Otherwise the error that best explains the failure: the device
-  ///   refusing a key (such as ``HandshakeError/rejected``), then
-  ///   ``CloudError/notDeviceOwner(message:)``, then any other cloud error.
+  ///   session. Otherwise the error that best explains the failure, in this order: a
+  ///   local check error other than ``HandshakeError/rejected``, such as a timeout;
+  ///   ``CloudError/notDeviceOwner(message:)``, unless the device rejected the other
+  ///   order's pair; any other cloud error except ``CloudError/keyNotFound(udpid:)``;
+  ///   ``HandshakeError/rejected``; ``CloudError/notDeviceOwner(message:)``;
+  ///   ``CloudError/keyNotFound(udpid:)``.
   public static func credentials(for device: DiscoveredDevice, session: SmartHomeSession?)
     async throws -> DeviceCredentials
   {
@@ -162,27 +165,56 @@ public enum Setup {
     async let bigEndian = fetchToken(session, device: device, bigEndian: true)
     var cloudError: (any Error)?
     var checkError: (any Error)?
+    var keyRejected = false
     for fetched in [await littleEndian, await bigEndian] {
       switch fetched {
       case .failure(let error):
-        // Not being the owner explains a failure better than a missing key does.
-        if case CloudError.notDeviceOwner = error {
-          cloudError = error
-        } else if cloudError == nil {
-          cloudError = error
-        }
+        cloudError = moreTelling(error, than: cloudError)
       case .success(let pair):
         do {
           return try await checked(
             DeviceCredentials(device: device, token: pair.token, key: pair.key))
+        } catch HandshakeError.rejected {
+          keyRejected = true
         } catch {
           checkError = error
         }
       }
     }
-    // A key the device turned down says more than a byte order the cloud didn't know.
-    // Each pass sets one of the two, so they can't both be nil.
-    throw (checkError ?? cloudError)!
+    throw credentialsError(check: checkError, cloud: cloudError, keyRejected: keyRejected)
+  }
+
+  /// Pick the error ``credentials(for:session:)`` throws from the last non-rejection
+  /// check error, the most telling cloud error and whether a key was rejected; at least
+  /// one is set, since each pair either fails its fetch or fails its check.
+  static func credentialsError(
+    check: (any Error)?, cloud: (any Error)?, keyRejected: Bool
+  ) -> any Error {
+    if let check {
+      return check
+    } else if let cloud {
+      // A pair the cloud returned for the other byte order shows the account owns
+      // the device, so "not the owner" or "no key" here only means no key under this
+      // order.
+      switch cloud {
+      case CloudError.notDeviceOwner, CloudError.keyNotFound:
+        return keyRejected ? HandshakeError.rejected : cloud
+      default:
+        return cloud
+      }
+    } else {
+      return HandshakeError.rejected
+    }
+  }
+
+  /// Keep the cloud error that explains a failed fetch better: not being the owner
+  /// first, a missing key last.
+  static func moreTelling(_ error: any Error, than current: (any Error)?) -> any Error {
+    guard let current else { return error }
+    switch (error as? CloudError, current as? CloudError) {
+    case (.notDeviceOwner?, _), (_, .keyNotFound?): return error
+    default: return current
+    }
   }
 
   private static func fetchToken(

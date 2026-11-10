@@ -53,4 +53,60 @@ import Testing
       if case SetupError.accountRequired = error { true } else { false }
     }
   }
+
+  /// A rejected pair yields to a cloud error, since the other pair never got checked.
+  @Test func cloudErrorBeatsRejection() {
+    let error = Setup.credentialsError(
+      check: nil, cloud: CloudError.invalidResponse("bad"), keyRejected: true)
+    #expect({ if case CloudError.invalidResponse = error { true } else { false } }())
+  }
+
+  /// A rejected pair beats "not the owner", since the cloud returned that pair.
+  @Test func rejectionBeatsNotOwner() {
+    let error = Setup.credentialsError(
+      check: nil, cloud: CloudError.notDeviceOwner(message: "no"),
+      keyRejected: true)
+    #expect({ if case HandshakeError.rejected = error { true } else { false } }())
+  }
+
+  /// With both fetches failed, any other cloud error beats a missing key.
+  @Test func otherCloudErrorBeatsKeyNotFound() {
+    let error = Setup.moreTelling(
+      CloudError.api(code: 1, message: "down"), than: CloudError.keyNotFound(udpid: "00"))
+    #expect({ if case CloudError.api = error { true } else { false } }())
+  }
+
+  /// With both fetches failed, not being the owner beats any other cloud error.
+  @Test func notOwnerBeatsOtherCloudError() {
+    let error = Setup.moreTelling(
+      CloudError.api(code: 1, message: "down"), than: CloudError.notDeviceOwner(message: "no"))
+    #expect({ if case CloudError.notDeviceOwner = error { true } else { false } }())
+  }
+
+  /// A rejected pair beats "no key", since the cloud returned that pair.
+  @Test func rejectionBeatsKeyNotFound() {
+    let error = Setup.credentialsError(
+      check: nil, cloud: CloudError.keyNotFound(udpid: "00"), keyRejected: true)
+    #expect({ if case HandshakeError.rejected = error { true } else { false } }())
+  }
+
+  /// A rejected pair yields to a timed-out check of the other pair.
+  @Test func checkErrorBeatsRejection() {
+    let error = Setup.credentialsError(
+      check: TimeoutError(), cloud: nil, keyRejected: true)
+    #expect(error is TimeoutError)
+  }
+
+  /// A failed check of a returned pair says more than a fetch that failed.
+  @Test func checkErrorBeatsCloudError() {
+    let error = Setup.credentialsError(
+      check: TimeoutError(), cloud: CloudError.notDeviceOwner(message: "no"), keyRejected: false)
+    #expect(error is TimeoutError)
+  }
+
+  /// With every returned pair rejected and no fetch failing, the rejection stands.
+  @Test func rejectionWhenEveryPairRejected() {
+    let error = Setup.credentialsError(check: nil, cloud: nil, keyRejected: true)
+    #expect({ if case HandshakeError.rejected = error { true } else { false } }())
+  }
 }
